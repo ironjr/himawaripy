@@ -21,7 +21,7 @@ import appdirs
 from PIL import Image
 from dateutil.tz import tzlocal
 
-from .utils import set_background, get_desktop_environment
+from himawaripy.utils import set_background, get_desktop_environment
 
 
 # Semantic Versioning: Major, Minor, Patch
@@ -54,7 +54,7 @@ def calculate_time_offset(latest_date, auto, preferred_offset):
 def download_chunk(args):
     global counter
 
-    x, y, latest, level = args
+    x, y, latest, level, w, h = args
     url_format = "http://himawari8.nict.go.jp/img/D531106/{}d/{}/{}_{}_{}.png"
     url = url_format.format(level, WIDTH, strftime("%Y/%m/%d/%H%M%S", latest), x, y)
 
@@ -69,7 +69,7 @@ def download_chunk(args):
         if counter.value == level * level:
             print("Downloading tiles: completed.")
         else:
-            print("Downloading tiles: {}/{} completed...".format(counter.value, level * level))
+            print("Downloading tiles: {}/{} completed...".format(counter.value, w * h))
     return x, y, tiledata
 
 
@@ -86,6 +86,10 @@ def parse_args():
     group.add_argument("-o", "--offset", type=int, dest="offset", default=10,
                        help="UTC time offset in hours, must be less than or equal to +10")
 
+    parser.add_argument("--screen-ratio", type=str, dest="screen_ratio", default="",
+                        help="specify the screen ratio to crop the output image, format example: \'16:9\'")
+    parser.add_argument("-t", "--tiles", type=str, dest="tiles", default="",
+                        help="specify the coordinate of the box to be fetched in xyxy format")
     parser.add_argument("-l", "--level", type=int, choices=[4, 8, 16, 20], dest="level", default=4,
                         help="increases the quality (and the size) of each tile. possible values are 4, 8, 16, 20")
     parser.add_argument("-d", "--deadline", type=int, dest="deadline", default=6,
@@ -149,6 +153,9 @@ def thread_main(args):
     counter = mp.Value("i", 0)
 
     level = args.level  # since we are going to use it a lot of times
+    x1, y1, x2, y2 = args.tiles
+    w = x2 - x1 + 1
+    h = y2 - y1 + 1
 
     print("Updating...")
     latest_json = download("http://himawari8-dl.nict.go.jp/himawari8/img/D531106/latest.json")
@@ -159,18 +166,48 @@ def thread_main(args):
     if args.auto_offset or args.offset != 10:
         print("Offset version: {} GMT.".format(strftime("%Y/%m/%d %H:%M:%S", requested_time)))
 
-    png = Image.new("RGB", (WIDTH * level, HEIGHT * level))
+    png = Image.new("RGB", (WIDTH * w, HEIGHT * h))
 
-    p = mp_dummy.Pool(level * level)
+    p = mp_dummy.Pool(w * h)
     print("Downloading tiles...")
-    res = p.map(download_chunk, it.product(range(level), range(level), (requested_time,), (args.level,)))
+    res = p.map(download_chunk, it.product(
+        range(x1, x2 + 1),
+        range(y1, y2 + 1),
+        (requested_time,),
+        (args.level,),
+        (w,),
+        (h,),
+    ))
 
     for (x, y, tiledata) in res:
         tile = Image.open(io.BytesIO(tiledata))
-        png.paste(tile, (WIDTH * x, HEIGHT * y, WIDTH * (x + 1), HEIGHT * (y + 1)))
+        png.paste(tile, (
+            WIDTH * (x - x1),
+            HEIGHT * (y - y1),
+            WIDTH * (x - x1 + 1),
+            HEIGHT * (y - y1 + 1)
+        ))
 
     for file in iglob(path.join(args.output_dir, "himawari-*.png")):
         os.remove(file)
+
+    # Crop if screen ratio is provided
+    if args.screen_ratio != 0:
+        aspect_ratio = float(w) / h
+        if aspect_ratio > args.screen_ratio:
+            # Crop the sides
+            height = HEIGHT * h
+            width = args.screen_ratio * height
+            left = int((WIDTH * w - width) * 0.5)
+            right = left + int(width)
+            png = png.crop((left, 0, right, HEIGHT * h))
+        elif aspect_ratio < args.screen_ratio:
+            # Crop the top and the bottom
+            width = WIDTH * w
+            height = width / args.screen_ratio
+            top = int((HEIGHT * h - height) * 0.5)
+            bottom = top + int(height)
+            png = png.crop((0, top, WIDTH * w, bottom))
 
     output_file = path.join(args.output_dir, strftime("himawari-%Y%m%dT%H%M%S.png", requested_time))
     print("Saving to '%s'..." % (output_file,))
@@ -187,6 +224,26 @@ def thread_main(args):
 
 def main():
     args = parse_args()
+    if args.tiles != "":
+        tiles = [int(t.strip()) for t in args.tiles.strip().split(",") if t.strip() != ""]
+        if len(tiles) < 4:
+            sys.exit("Wrong box coordinates!\n")
+        if tiles[2] < tiles[0] or tiles[3] < tiles[1]:
+            sys.exit("Wrong box coordinates!\n")
+        if tiles[2] >= args.level or tiles[3] >= args.level or tiles[0] < 0 or tiles[1] < 0:
+            sys.exit("Wrong box coordinates!\n")
+        args.tiles = tuple(tiles[:4])
+    else:
+        args.tiles = (0, 0, args.level - 1, args.level - 1)
+    if args.screen_ratio != "":
+        sr = [float(r.strip()) for r in args.screen_ratio.strip().split(":") if r.strip() != ""]
+        if len(sr) < 2:
+            sys.exit("Wrong screen ratio!\n")
+        if sr[0] <= 0 or sr[1] <= 0:
+            sys.exit("Wrong screen ratio!\n")
+        args.screen_ratio = sr[0] / sr[1]
+    else:
+        args.screen_ratio = 0
 
     print("himawaripy {}.{}.{}".format(*HIMAWARIPY_VERSION))
 

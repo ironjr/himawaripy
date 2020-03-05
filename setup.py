@@ -7,8 +7,8 @@ setup(
     name="himawaripy",
     version="2.1.0",
     url="http://labs.boramalper.org/himawaripy",
-    author="Bora M. Alper",
-    author_email="bora@boramalper.org",
+    author="Bora M. Alper, Jaerin Lee",
+    author_email="bora@boramalper.org, jarin.lee@gmail.com",
     license="MIT",
     description="himawaripy is a Python 3 script that fetches near-realtime (10 minutes delayed) picture of Earth "
                 "as its taken by Himawari 8 (ひまわり8号) and sets it as your desktop background.",
