@@ -18,6 +18,7 @@ import time
 import subprocess
 
 import appdirs
+import numpy as np
 from PIL import Image
 from dateutil.tz import tzlocal
 
@@ -54,9 +55,15 @@ def calculate_time_offset(latest_date, auto, preferred_offset):
 def download_chunk(args):
     global counter
 
-    x, y, latest, level, w, h = args
-    url_format = "http://himawari8.nict.go.jp/img/D531106/{}d/{}/{}_{}_{}.png"
-    url = url_format.format(level, WIDTH, strftime("%Y/%m/%d/%H%M%S", latest), x, y)
+    img_type, x, y, latest, level, w, h = args
+    if img_type == "vis":
+        type_name = "D531106"
+    elif img_type == "ir":
+        type_name = "INFRARED_FULL"
+
+    url_format = "http://himawari8.nict.go.jp/img/{}/{}d/{}/{}_{}_{}.png"
+    url = url_format.format(type_name, level, WIDTH, strftime("%Y/%m/%d/%H%M%S", latest), x, y)
+
 
     tiledata = download(url)
 
@@ -92,6 +99,12 @@ def parse_args():
                         help="specify the coordinate of the box to be fetched in xyxy format")
     parser.add_argument("-l", "--level", type=int, choices=[4, 8, 16, 20], dest="level", default=4,
                         help="increases the quality (and the size) of each tile. possible values are 4, 8, 16, 20")
+    parser.add_argument("--img-type", type=str, choices=["vis", "ir"], dest="img_type", default="vis",
+                        help="choose between visible (vis) or infrared (ir) image")
+    parser.add_argument("--border", action="store_true", dest="border", default=False,
+                        help="overlay state borders")
+    parser.add_argument("--warp", action="store_true", dest="warp", default=False,
+                        help="warp images with different perspective, not implemented yet")
     parser.add_argument("-d", "--deadline", type=int, dest="deadline", default=6,
                         help="deadline in minutes to download all the tiles, set 0 to cancel")
     parser.add_argument("--save-battery", action="store_true", dest="save_battery", default=False,
@@ -148,6 +161,14 @@ def download(url):
         sys.exit("Could not download '{}'!\n".format(url))
 
 
+def overlay_borders(img, bd):
+    img = np.array(img)
+    bd = np.array(bd)[:, :, :3]
+    mask_img = (bd == [255, 255, 255]).all(axis=2)
+    mask_img = np.tile(mask_img, [3, 1, 1]).transpose([1, 2, 0])
+    return Image.fromarray(img * mask_img + bd * ~mask_img, "RGB")
+
+
 def thread_main(args):
     global counter
     counter = mp.Value("i", 0)
@@ -171,6 +192,7 @@ def thread_main(args):
     p = mp_dummy.Pool(w * h)
     print("Downloading tiles...")
     res = p.map(download_chunk, it.product(
+        (args.img_type,),
         range(x1, x2 + 1),
         range(y1, y2 + 1),
         (requested_time,),
@@ -179,6 +201,7 @@ def thread_main(args):
         (h,),
     ))
 
+    # TODO infrared images have two channels, need to convert them into more visually clear images.
     for (x, y, tiledata) in res:
         tile = Image.open(io.BytesIO(tiledata))
         png.paste(tile, (
@@ -190,6 +213,16 @@ def thread_main(args):
 
     for file in iglob(path.join(args.output_dir, "himawari-*.png")):
         os.remove(file)
+
+    # Overlay border
+    if args.border:
+        border = Image.open(os.path.join(
+            os.path.dirname(__file__),
+            "borders",
+            "border{}.png".format(args.level)
+        ))
+        border = border.crop((WIDTH * x1, HEIGHT * y1, WIDTH * (x2 + 1), HEIGHT * (y2 + 1)))
+        png = overlay_borders(png, border)
 
     # Crop if screen ratio is provided
     if args.screen_ratio != 0:
@@ -224,6 +257,9 @@ def thread_main(args):
 
 def main():
     args = parse_args()
+    if args.img_type == "ir" and args.level > 8:
+        print("IR images have only 1, 4, and 8 levels; automatically fetching level 8 images instead")
+        args.level = 8
     if args.tiles != "":
         tiles = [int(t.strip()) for t in args.tiles.strip().split(",") if t.strip() != ""]
         if len(tiles) < 4:
