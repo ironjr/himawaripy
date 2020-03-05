@@ -41,6 +41,12 @@ optional arguments:
   -o OFFSET, --offset OFFSET
                         UTC time offset in hours, must be less than or equal
                         to +10
+  --screen-ratio SCREEN_RATIO
+                        specify the screen ratio to crop the output image,
+                        format example: '16:9'
+  -t TILES, --tiles TILES
+                        specify the coordinate of the box to be fetched in
+                        xyxy format
   -l {4,8,16,20}, --level {4,8,16,20}
                         increases the quality (and the size) of each tile.
                         possible values are 4, 8, 16, 20
@@ -83,6 +89,8 @@ bgcolor=#000000
 
 ## Installation
 * You need a valid python3 installation including the python3-setuptools package
+* This installation guide installs the version of [the original repo](https://github.com/boramalper/himawaripy).
+Please install it manually if you want to use this specific version.
 
 ```
 # Install
@@ -179,9 +187,6 @@ pip3 uninstall himawaripy
 
 `<INSTALLATION_PATH>` can be found using the command `which -- himawaripy`.
 
-If you would like to share why, you can contact me on github or
-[send an e-mail](mailto:bora@boramalper.org).
-
 ## Attributions
 Thanks to *[MichaelPote](https://github.com/MichaelPote)* for the [initial
 implementation](https://gist.github.com/MichaelPote/92fa6e65eacf26219022) using
@@ -189,6 +194,12 @@ Powershell Script.
 
 Thanks to *[Charlie Loyd](https://github.com/celoyd)* for image processing logic
 ([hi8-fetch.py](https://gist.github.com/celoyd/39c53f824daef7d363db)).
+
+Thanks to *[Bora M. Alper](https://github.com/boramalper)* for [the baseline model](https://github.com/boramalper/himawaripy).
+This version is the clone of this original repository with few personal modifications.
+
+If you would like to discuss the problem of this specific version of the repo, please contact me on github or
+[send an e-mail](mailto:jarin.lee@gmail.com).
 
 Obviously, thanks to the Japan Meteorological Agency for opening these pictures
 to public.
