@@ -23,10 +23,11 @@ from PIL import Image
 from dateutil.tz import tzlocal
 
 from himawaripy.utils import set_background, get_desktop_environment
+from himawaripy.mapper import Mapper
 
 
 # Semantic Versioning: Major, Minor, Patch
-HIMAWARIPY_VERSION = (2, 1, 0)
+HIMAWARIPY_VERSION = (3, 0, 0)
 counter = None
 HEIGHT = 550
 WIDTH = 550
@@ -95,6 +96,16 @@ def parse_args():
 
     parser.add_argument("--screen-ratio", type=str, dest="screen_ratio", default="",
                         help="specify the screen ratio to crop the output image, format example: \'16:9\'")
+    parser.add_argument("--screen-height", type=int, dest="screen_height", default=0,
+                        help="specify the screen height to crop the output image")
+    parser.add_argument("--screen-width", type=int, dest="screen_width", default=0,
+                        help="specify the screen width to crop the output image")
+    parser.add_argument("--scale", type=float, dest="scale", default=0.0,
+                        help="map scale in kilometers per pixel, Lambert azimuthal equal-area projection is used")
+    parser.add_argument("--center", type=str, dest="center", default="34.5665,126.9780",
+                        help="center of the map in \'latitude,longitude\' format")
+    # TODO add southern hemisphere
+    # TODO add predefined countries
     parser.add_argument("-t", "--tiles", type=str, dest="tiles", default="",
                         help="specify the coordinate of the box to be fetched in xyxy format")
     parser.add_argument("-l", "--level", type=int, choices=[4, 8, 16, 20], dest="level", default=4,
@@ -103,8 +114,7 @@ def parse_args():
                         help="choose between visible (vis) or infrared (ir) image")
     parser.add_argument("--border", action="store_true", dest="border", default=False,
                         help="overlay state borders")
-    parser.add_argument("--warp", action="store_true", dest="warp", default=False,
-                        help="warp images with different perspective, not implemented yet")
+
     parser.add_argument("-d", "--deadline", type=int, dest="deadline", default=6,
                         help="deadline in minutes to download all the tiles, set 0 to cancel")
     parser.add_argument("--save-battery", action="store_true", dest="save_battery", default=False,
@@ -187,6 +197,16 @@ def thread_main(args):
     if args.auto_offset or args.offset != 10:
         print("Offset version: {} GMT.".format(strftime("%Y/%m/%d %H:%M:%S", requested_time)))
 
+    # Lambert azimuthal equal-area projection for northern hemisphere
+    mapper = None
+    if args.scale != 0.0:
+        mapper = Mapper(
+            level=level,
+            offset=(x1, y1),
+            scale=args.scale,
+            center=args.center
+        )
+
     png = Image.new("RGB", (WIDTH * w, HEIGHT * h))
 
     p = mp_dummy.Pool(w * h)
@@ -224,23 +244,43 @@ def thread_main(args):
         border = border.crop((WIDTH * x1, HEIGHT * y1, WIDTH * (x2 + 1), HEIGHT * (y2 + 1)))
         png = overlay_borders(png, border)
 
-    # Crop if screen ratio is provided
-    if args.screen_ratio != 0:
+    # Get width and height of the crop (optional)
+    width = args.screen_width
+    height = args.screen_height
+    if height == 0 and width != 0:
+        if args.screen_ratio != 0:
+            height = width / args.screen_ratio
+    elif height != 0 and width == 0:
+        if args.screen_ratio != 0:
+            height = width / args.screen_ratio
+    elif height == 0 and width == 0 and args.screen_ratio != 0:
         aspect_ratio = float(w) / h
         if aspect_ratio > args.screen_ratio:
             # Crop the sides
-            height = HEIGHT * h
-            width = args.screen_ratio * height
-            left = int((WIDTH * w - width) * 0.5)
-            right = left + int(width)
-            png = png.crop((left, 0, right, HEIGHT * h))
+            width = HEIGHT * h * args.screen_ratio
         elif aspect_ratio < args.screen_ratio:
             # Crop the top and the bottom
-            width = WIDTH * w
-            height = width / args.screen_ratio
-            top = int((HEIGHT * h - height) * 0.5)
-            bottom = top + int(height)
-            png = png.crop((0, top, WIDTH * w, bottom))
+            height = WIDTH * w / args.screen_ratio
+
+    # Map or crop
+    if mapper is not None and width != 0 and height != 0:
+        # Project to the map plane
+        png = mapper.transform(png, width, height) 
+    else:
+        # Center crop if screen ratio is provided
+        if height != 0:
+            l = 0
+            t = int((HEIGHT * h - height) * 0.5)
+            r = WIDTH * w
+            b = t + int(height)
+            png = png.crop((l, t, r, b))
+
+        if width != 0:
+            l = int((WIDTH * w - width) * 0.5)
+            t = 0
+            r = l + int(width)
+            b = HEIGHT * h
+            png = png.crop((l, t, r, b))
 
     output_file = path.join(args.output_dir, strftime("himawari-%Y%m%dT%H%M%S.png", requested_time))
     print("Saving to '%s'..." % (output_file,))
