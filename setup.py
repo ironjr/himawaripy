@@ -5,7 +5,7 @@ with open("README.md", "r") as f:
 
 setup(
     name="himawaripy",
-    version="3.0.0",
+    version="3.0.1",
     url="http://labs.boramalper.org/himawaripy",
     author="Bora M. Alper, Jaerin Lee",
     author_email="bora@boramalper.org, jarin.lee@gmail.com",

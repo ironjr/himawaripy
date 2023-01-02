@@ -27,7 +27,7 @@ from himawaripy.mapper import Mapper
 
 
 # Semantic Versioning: Major, Minor, Patch
-HIMAWARIPY_VERSION = (3, 0, 0)
+HIMAWARIPY_VERSION = (3, 0, 1)
 counter = None
 HEIGHT = 550
 WIDTH = 550
@@ -62,7 +62,7 @@ def download_chunk(args):
     elif img_type == "ir":
         type_name = "INFRARED_FULL"
 
-    url_format = "http://himawari8.nict.go.jp/img/{}/{}d/{}/{}_{}_{}.png"
+    url_format = "https://himawari8.nict.go.jp/img/{}/{}d/{}/{}_{}_{}.png"
     url = url_format.format(type_name, level, WIDTH, strftime("%Y/%m/%d/%H%M%S", latest), x, y)
 
 
@@ -189,7 +189,8 @@ def thread_main(args):
     h = y2 - y1 + 1
 
     print("Updating...")
-    latest_json = download("http://himawari8-dl.nict.go.jp/himawari8/img/D531106/latest.json")
+    #  latest_json = download("http://himawari8-dl.nict.go.jp/himawari8/img/D531106/latest.json")
+    latest_json = download("https://himawari8.nict.go.jp/img/D531106/latest.json")
     latest = strptime(json.loads(latest_json.decode("utf-8"))["date"], "%Y-%m-%d %H:%M:%S")
 
     print("Latest version: {} GMT.".format(strftime("%Y/%m/%d %H:%M:%S", latest)))
